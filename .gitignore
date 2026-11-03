@@ -1,0 +1,21 @@
+# Never publish captures, credentials, or local development tools.
+*.zip
+*.har
+*.p12
+*.pfx
+*.mobileconfig
+*.pem
+*.key
+.env
+.env.*
+captures/
+private/
+work/
+tools/
+node_modules/
+request_header_raw.txt
+response_header_raw.txt
+request_body_raw
+response_body_raw
+replace_response_header_raw.txt
+replace_response_body_raw
