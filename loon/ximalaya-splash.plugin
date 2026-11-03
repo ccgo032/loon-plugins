@@ -1,0 +1,20 @@
+#!name = 喜马拉雅开屏广告过滤（抓包版）
+#!desc = 基于喜马拉雅 9.5.22 抓包：关闭广告展示开关，拒绝喜马拉雅发起的 TME 广告请求。纯原生复写，无 JavaScript；需要 Rewrite、MitM 和 HTTP/2 解密。尚待真机验证。
+#!author = ccgo032
+#!homepage = https://github.com/ccgo032/loon-plugins
+#!system = iOS,iPadOS
+#!loon_version = 3.5.1(978)
+#!date = 2026-11-03
+#!tag = 去广告,喜马拉雅
+
+[Rewrite]
+# Captured SDK User-Agent starts with "ting/". Do not reject other apps' requests.
+# Both JSON and Protobuf ad acquisition endpoints were observed in the capture.
+request if ${request.method} == "POST" && ${url} ~= /^https:\/\/tmeadkg\.y\.qq\.com\/maproxy\/(?:getAd|getPbCompressAd)(?:\?.*)?$/ && ${request.header['User-Agent']} ~= /^ting\/[0-9]/i then reject(204)
+
+# Preserve the original response except the existing Boolean advertising flag.
+# Leave error responses, missing fields and changed schemas unmodified.
+response if ${request.method} == "GET" && ${url} ~= /^https:\/\/mobwsa\.ximalaya\.com\/mobile-resource-position\/resource\/advertising\/free\/v2(?:\?.*)?$/ && ${response.status} == 200 then response.json.jq("if type == \"object\" then if .ret == 0 and (.data | type) == \"object\" then if .data.isAdShow == true then .data.isAdShow = false else . end else . end else . end")
+
+[MitM]
+hostname = mobwsa.ximalaya.com,tmeadkg.y.qq.com
