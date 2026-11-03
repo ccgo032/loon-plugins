@@ -38,28 +38,29 @@ function matches(rule, request) {
     && (!rule.status || request.status === rule.status);
 }
 
-function getJqExpression() {
-  const match = /^response\.json\.jq\(("(?:\\.|[^"\\])*")\)$/.exec(responseRule.action);
+function getJqExpression(rule = responseRule) {
+  const match = /^response\.json\.jq\(("(?:\\.|[^"\\])*")\)(?: \| response\.header\.set\("X-Loon-Ximalaya-Filter", "v2"\))?$/.exec(rule.action);
   assert.ok(match, 'JSON transformation must use one inline JQ expression');
   return JSON.parse(match[1]);
 }
 
-function transformWithJq(value, jqBin = process.env.JQ_BIN || 'jq') {
-  const result = spawnSync(jqBin, ['-c', getJqExpression()], { input: JSON.stringify(value), encoding: 'utf8', windowsHide: true });
+function transformWithJq(value, jqBin = process.env.JQ_BIN || 'jq', rule = responseRule) {
+  const result = spawnSync(jqBin, ['-c', getJqExpression(rule)], { input: JSON.stringify(value), encoding: 'utf8', windowsHide: true });
   if (result.error) throw result.error;
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
 
-test('plugin has two native rewrites and only two explicit MitM hosts', () => {
-  assert.equal(rules.length, 2);
+test('v2 has five native rewrites, four ad domains and three explicit MitM hosts', () => {
+  assert.equal(rules.length, 5);
   assert.ok(requestRule && responseRule);
   assert.equal(requestRule.action, 'reject(204)');
   assert.match(plugin, /^#!loon_version = 3\.5\.1\(978\)$/m);
-  assert.deepEqual([...plugin.matchAll(/^\[([^\]]+)\]$/gm)].map(m => m[1]), ['Rewrite', 'MitM']);
+  assert.deepEqual([...plugin.matchAll(/^\[([^\]]+)\]$/gm)].map(m => m[1]), ['Rule', 'Rewrite', 'MitM']);
   const hosts = /^hostname\s*=\s*(.+)$/m.exec(plugin)?.[1].split(',').map(s => s.trim()).sort();
-  assert.deepEqual(hosts, ['mobwsa.ximalaya.com', 'tmeadkg.y.qq.com']);
-  assert.doesNotMatch(plugin, /\[Script\]|script-path|\.js(?:\?|\s|$)|\$httpClient|mock_file|\[Host\]|\[General\]|\[Rule\]/i);
+  assert.deepEqual(hosts, ['mobile.ximalaya.com', 'mobwsa.ximalaya.com', 'tmeadkg.y.qq.com']);
+  assert.deepEqual(plugin.match(/^DOMAIN,.+,REJECT$/gm), ['DOMAIN,adse.ximalaya.com,REJECT','DOMAIN,adse.wsa.ximalaya.com,REJECT','DOMAIN,adse.test.ximalaya.com,REJECT','DOMAIN,adsebs.ximalaya.com,REJECT']);
+  assert.doesNotMatch(plugin, /\[Script\]|script-path|\.js(?:\?|\s|$)|\$httpClient|mock_file|\[Host\]|\[General\]|IP-CIDR|DOMAIN-SUFFIX/i);
   assert.doesNotMatch(plugin, /ca-p12|ca-passphrase|114\.114\.114\.114|skip-server-cert-verify/i);
 });
 
@@ -88,4 +89,48 @@ test('actual JQ preserves errors and unrelated fields', { skip: jqProbe.status !
   }
 });
 
-module.exports = { rules, matches, transformWithJq, getJqExpression };
+function endpointRule(fragment) {
+  return rules.find(r => r.phase === 'response' && r.url.test('https://' + fragment));
+}
+
+test('new configuration rewrites exclude unrelated methods, hosts and paths', () => {
+  const endpoints = [
+    ['GET','mobwsa.ximalaya.com/mobile_switch_ios/synthetic'],
+    ['POST','mobwsa.ximalaya.com/abtest-portal/sync/synthetic'],
+    ['POST','mobile.ximalaya.com/firework-portal/v12/sync'],
+  ];
+  for (const [method,endpoint] of endpoints) {
+    const rule = endpointRule(endpoint);
+    assert.ok(rule);
+    assert.equal(matches(rule,{method,url:'https://'+endpoint+'?test=synthetic',status:200}),true);
+    for (const bad of [
+      {method:method==='POST'?'GET':'POST',url:'https://'+endpoint,status:200},
+      {method,url:'https://'+endpoint,status:500},
+      {method,url:'https://sub.'+endpoint,status:200},
+      {method,url:'https://'+endpoint+'/extra',status:200},
+      {method,url:'https://mobwsa.ximalaya.com/business-vip-center-mobile-web/user/vip-info',status:200},
+    ]) assert.equal(matches(rule,bad),false);
+  }
+});
+
+test('v2 changes only the selected feature and explicit ad plans', { skip: jqProbe.status !== 0 ? 'Install jq or set JQ_BIN' : false }, () => {
+  const convert=(value,endpoint)=>transformWithJq(value,process.env.JQ_BIN||'jq',endpointRule(endpoint));
+  const dns='mobwsa.ximalaya.com/mobile_switch_ios/synthetic';
+  assert.deepEqual(convert({enableHttpdns:true,other:true},dns),{enableHttpdns:false,other:true});
+  assert.deepEqual(convert({enableHttpdns:'true',other:1},dns),{enableHttpdns:'true',other:1});
+  const ab='mobwsa.ximalaya.com/abtest-portal/sync/synthetic';
+  const plan={name:'useNewSplashV3',action:{payload:{'ad&useNewSplashV3':'true',keep:'true'}},status:1};
+  const before={plans:[plan,{...structuredClone(plan),name:'anotherExperiment'},null,'synthetic'],signature:'synthetic'};
+  const expected=structuredClone(before);expected.plans[0].action.payload['ad&useNewSplashV3']='false';
+  assert.deepEqual(convert(before,ab),expected);
+  for (const item of [{name:'useNewSplashV3'}, {name:'useNewSplashV3',action:{payload:[]}}, {name:'useNewSplashV3',action:{payload:{'ad&useNewSplashV3':true}}}]) assert.deepEqual(convert({plans:[item]},ab),{plans:[item]});
+  const pop='mobile.ximalaya.com/firework-portal/v12/sync';
+  const input={ret:0,signature:'synthetic',plans:[{id:'ad',type:20},{id:'cash',type:1,name:'synthetic drama promotion',fireworks:[{contentType:1,resource:{type:1,url:'https://example.invalid/promo.jpg'}}]},{id:'form',type:1,name:'儿童信息填写',fireworks:[{contentType:19}]},{id:'ordinary',type:1,name:'ordinary'},null],locations:[{planIds:['ad','form','cash','ordinary','unknown'],keep:1},{other:1},null]};
+  const want=structuredClone(input);want.plans=[input.plans[2],input.plans[3],null];want.locations[0].planIds=['form','ordinary','unknown'];
+  assert.deepEqual(convert(input,pop),want);
+  assert.deepEqual(convert({...input,ret:1},pop),{...input,ret:1});
+  assert.deepEqual(convert({ret:0,plans:[],locations:{keep:true}},pop),{ret:0,plans:[],locations:{keep:true}});
+  for (const endpoint of [dns,ab,pop]) for(const value of [null,[],42,'synthetic',{}, {plans:'synthetic'}]) assert.deepEqual(convert(value,endpoint),value);
+});
+
+module.exports = { rules, matches, transformWithJq, getJqExpression, endpointRule };
