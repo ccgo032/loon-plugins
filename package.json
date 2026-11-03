@@ -1,0 +1,12 @@
+{
+  "name": "loon-ximalaya-splash",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Declarative Loon rewrite rules for captured Ximalaya advertising endpoints",
+  "scripts": {
+    "test": "node --test test/plugin.test.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
