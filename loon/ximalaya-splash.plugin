@@ -1,5 +1,5 @@
-#!name = 喜马拉雅开屏广告过滤（抓包版）
-#!desc = 基于喜马拉雅 9.5.22 抓包：关闭广告展示开关，拒绝喜马拉雅发起的 TME 广告请求。纯原生复写，无 JavaScript；需要 Rewrite、MitM 和 HTTP/2 解密。尚待真机验证。
+#!name = 喜马拉雅开屏广告过滤 v2
+#!desc = 修订版：广告展示开关、新版开屏实验开关、HTTPDNS 配置、广告弹屏计划及广告专属域名。纯原生复写，无远程脚本。需开启复写和 MitM；实际开屏效果待手机复测。
 #!author = ccgo032
 #!homepage = https://github.com/ccgo032/loon-plugins
 #!system = iOS,iPadOS
@@ -7,14 +7,30 @@
 #!date = 2026-11-03
 #!tag = 去广告,喜马拉雅
 
+[Rule]
+# Known Ximalaya advertising hosts; no decryption needed. No shared DNS/IP block.
+DOMAIN,adse.ximalaya.com,REJECT
+DOMAIN,adse.wsa.ximalaya.com,REJECT
+DOMAIN,adse.test.ximalaya.com,REJECT
+DOMAIN,adsebs.ximalaya.com,REJECT
+
 [Rewrite]
-# Captured SDK User-Agent starts with "ting/". Do not reject other apps' requests.
-# Both JSON and Protobuf ad acquisition endpoints were observed in the capture.
+# TME SDK requests from the captured Ximalaya User-Agent only.
 request if ${request.method} == "POST" && ${url} ~= /^https:\/\/tmeadkg\.y\.qq\.com\/maproxy\/(?:getAd|getPbCompressAd)(?:\?.*)?$/ && ${request.header['User-Agent']} ~= /^ting\/[0-9]/i then reject(204)
 
-# Preserve the original response except the existing Boolean advertising flag.
-# Leave error responses, missing fields and changed schemas unmodified.
-response if ${request.method} == "GET" && ${url} ~= /^https:\/\/mobwsa\.ximalaya\.com\/mobile-resource-position\/resource\/advertising\/free\/v2(?:\?.*)?$/ && ${response.status} == 200 then response.json.jq("if type == \"object\" then if .ret == 0 and (.data | type) == \"object\" then if .data.isAdShow == true then .data.isAdShow = false else . end else . end else . end")
+# Existing ad gate, confirmed rewritten in the second capture.
+response if ${request.method} == "GET" && ${url} ~= /^https:\/\/mobwsa\.ximalaya\.com\/mobile-resource-position\/resource\/advertising\/free\/v2(?:\?.*)?$/ && ${response.status} == 200 then response.json.jq("if type == \"object\" then if .ret == 0 and (.data | type) == \"object\" then if .data.isAdShow == true then .data.isAdShow = false else . end else . end else . end") | response.header.set("X-Loon-Ximalaya-Filter", "v2")
+
+# Disable only the captured HTTPDNS Boolean; leave every other switch untouched.
+response if ${request.method} == "GET" && ${url} ~= /^https:\/\/mobwsa\.ximalaya\.com\/mobile_switch_ios\/[^\/?]+(?:\?.*)?$/ && ${response.status} == 200 then response.json.jq("if type == \"object\" then if .enableHttpdns == true then .enableHttpdns = false else . end else . end") | response.header.set("X-Loon-Ximalaya-Filter", "v2")
+
+# Opt out of this specific new-splash experiment; preserve all other AB plans.
+# This is an inference from the captured feature name, not a verified no-ad API.
+response if ${request.method} == "POST" && ${url} ~= /^https:\/\/mobwsa\.ximalaya\.com\/abtest-portal\/sync\/[^\/?]+(?:\?.*)?$/ && ${response.status} == 200 then response.json.jq("if type == \"object\" then if (.plans | type) == \"array\" then .plans |= map(if type == \"object\" then if .name == \"useNewSplashV3\" and (.action | type) == \"object\" then if (.action.payload | type) == \"object\" then if .action.payload[\"ad&useNewSplashV3\"] == \"true\" then .action.payload[\"ad&useNewSplashV3\"] = \"false\" else . end else . end else . end else . end) else . end else . end") | response.header.set("X-Loon-Ximalaya-Filter", "v2")
+
+# Remove ad slots and image/video promotion plans, including drama promotions.
+# Preserve forms, unrelated plans, server signatures and other response fields.
+response if ${request.method} == "POST" && ${url} ~= /^https:\/\/mobile\.ximalaya\.com\/firework-portal\/v12\/sync(?:\?.*)?$/ && ${response.status} == 200 then response.json.jq("def is_ad: if type == \"object\" then .type == 20 or (if (.fireworks | type) == \"array\" then any(.fireworks[]; if type == \"object\" then (.contentType == 1 or .contentType == 4) and (.resource | type) == \"object\" else false end) else false end) else false end; if type == \"object\" then if .ret == 0 and (.plans | type) == \"array\" then [.plans[] | select(is_ad) | .id | select(. != null)] as $removed | .plans |= map(select(is_ad | not)) | if (.locations | type) == \"array\" then .locations |= map(if type == \"object\" then if (.planIds | type) == \"array\" then .planIds |= map(select(. as $id | $removed | index($id) | not)) else . end else . end) else . end else . end else . end") | response.header.set("X-Loon-Ximalaya-Filter", "v2")
 
 [MitM]
-hostname = mobwsa.ximalaya.com,tmeadkg.y.qq.com
+hostname = mobwsa.ximalaya.com,mobile.ximalaya.com,tmeadkg.y.qq.com
