@@ -1,0 +1,55 @@
+{
+  "note": "Handwritten synthetic fixtures. No capture bodies, account data, identifiers, cookies or tokens are included.",
+  "requestMatches": [
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/maproxy/getAd", "userAgent": "ting/9.5.22.6" },
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/maproxy/getPbCompressAd", "userAgent": "ting/9.5.22.6 CFNetwork/Test" },
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/maproxy/getAd?test=synthetic", "userAgent": "ting/10.0.0" },
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/maproxy/getAd", "userAgent": "TING/9.5.22.6" }
+  ],
+  "requestPassThrough": [
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/maproxy/getAd", "userAgent": "QQMusic/1.0" },
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/maproxy/getAd", "userAgent": "not-ting/1.0" },
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/maproxy/getAd", "userAgent": "" },
+    { "method": "GET", "url": "https://tmeadkg.y.qq.com/maproxy/getAd", "userAgent": "ting/9.5.22.6" },
+    { "method": "POST", "url": "http://tmeadkg.y.qq.com/maproxy/getAd", "userAgent": "ting/9.5.22.6" },
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com.example.invalid/maproxy/getAd", "userAgent": "ting/9.5.22.6" },
+    { "method": "POST", "url": "https://sub.tmeadkg.y.qq.com/maproxy/getAd", "userAgent": "ting/9.5.22.6" },
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/maproxy/getAdExtra", "userAgent": "ting/9.5.22.6" },
+    { "method": "POST", "url": "https://tmeadkg.y.qq.com/mareportbatch/reportBatchPb", "userAgent": "ting/9.5.22.6" },
+    { "method": "POST", "url": "https://passportws.ximalaya.com/user-http-app/v1/token/refresh", "userAgent": "ting/9.5.22.6" },
+    { "method": "GET", "url": "https://audio.ali.xmcdn.com/synthetic-audio.mp4", "userAgent": "ting/9.5.22.6" },
+    { "method": "POST", "url": "https://mp.ximalaya.com/business-iap-pay-mobile-web/productmapping/products", "userAgent": "ting/9.5.22.6" },
+    { "method": "GET", "url": "https://mobwsa.ximalaya.com/mobile-user/v2/homePage/synthetic", "userAgent": "ting/9.5.22.6" }
+  ],
+  "responseMatches": [
+    { "method": "GET", "url": "https://mobwsa.ximalaya.com/mobile-resource-position/resource/advertising/free/v2", "status": 200 },
+    { "method": "GET", "url": "https://mobwsa.ximalaya.com/mobile-resource-position/resource/advertising/free/v2?test=synthetic", "status": 200 }
+  ],
+  "responsePassThrough": [
+    { "method": "POST", "url": "https://mobwsa.ximalaya.com/mobile-resource-position/resource/advertising/free/v2", "status": 200 },
+    { "method": "GET", "url": "https://mobwsa.ximalaya.com/mobile-resource-position/resource/advertising/free/v2", "status": 403 },
+    { "method": "GET", "url": "https://mobwsa.ximalaya.com/mobile-resource-position/resource/advertising/free/v20", "status": 200 },
+    { "method": "GET", "url": "https://mobwsa.ximalaya.com/mobile-resource-position/resource/advertising/free/v2/extra", "status": 200 },
+    { "method": "GET", "url": "https://mobwsa.ximalaya.com.example.invalid/mobile-resource-position/resource/advertising/free/v2", "status": 200 },
+    { "method": "GET", "url": "https://mobwsa.ximalaya.com/business-vip-center-mobile-web/user/vip-info/v1/synthetic", "status": 200 }
+  ],
+  "jsonTransform": [
+    {
+      "name": "disable only advertising gate",
+      "input": { "ret": 0, "data": { "isAdShow": true, "keep": "synthetic", "isNewUser": false }, "other": { "isAdShow": true } },
+      "expected": { "ret": 0, "data": { "isAdShow": false, "keep": "synthetic", "isNewUser": false }, "other": { "isAdShow": true } }
+    },
+    { "name": "already disabled", "input": { "ret": 0, "data": { "isAdShow": false } }, "expected": { "ret": 0, "data": { "isAdShow": false } } },
+    { "name": "error response", "input": { "ret": 1, "data": { "isAdShow": true } }, "expected": { "ret": 1, "data": { "isAdShow": true } } },
+    { "name": "missing ret", "input": { "data": { "isAdShow": true } }, "expected": { "data": { "isAdShow": true } } },
+    { "name": "missing data", "input": { "ret": 0 }, "expected": { "ret": 0 } },
+    { "name": "missing advertising field", "input": { "ret": 0, "data": { "keep": true } }, "expected": { "ret": 0, "data": { "keep": true } } },
+    { "name": "string advertising field", "input": { "ret": 0, "data": { "isAdShow": "true" } }, "expected": { "ret": 0, "data": { "isAdShow": "true" } } },
+    { "name": "null advertising field", "input": { "ret": 0, "data": { "isAdShow": null } }, "expected": { "ret": 0, "data": { "isAdShow": null } } },
+    { "name": "array data", "input": { "ret": 0, "data": [] }, "expected": { "ret": 0, "data": [] } },
+    { "name": "string data", "input": { "ret": 0, "data": "synthetic" }, "expected": { "ret": 0, "data": "synthetic" } },
+    { "name": "array root", "input": [], "expected": [] },
+    { "name": "string root", "input": "synthetic", "expected": "synthetic" },
+    { "name": "null root", "input": null, "expected": null }
+  ]
+}
